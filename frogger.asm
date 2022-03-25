@@ -81,6 +81,63 @@ sw $a1, 4($a2)
 jr $ra
 
 
+updateFrog:
+# $a0 stores the memory address of the frog array
+# $a1 stores which way to move the frog (UP/DOWN = 0, LEFT/RIGHT = 1)
+# $a2 stores move frog by how mush (pixel * 4) 
+beq $a2, $zero, updateFrogReturn	# no change to position
+add $t0, $zero, $zero			# $t0 = 0
+addi $t1, $zero, 1			# $t1 = 1
+beq $a1, $t1, updateFrogLR
+# update y position
+lw $t5, 4($a0)				# load original y position into $t5
+add $t5, $t5, $a2			# calculate new y position
+bgtz $a2, updateFrogCheckYLow 		# check if y position is too low ($a2 > 0 moved dwon (check too low), $a2 < 0 moved up (check too high)
+# handle new y too high (top overflow)
+blez $t5, updateFrogYHighAdjust		# if new y too high, jump to high adjust
+sw $t5, 4($a0)				# load original y position into $t5
+j updateFrogReturn
+updateFrogYHighAdjust:
+addi $t5, $zero, 4			# new y position = 4
+sw $t5, 4($a0)				# write y position into $a0
+j updateFrogReturn
+# hanlde new y too low (bottom overflow)
+updateFrogCheckYLow:
+addi $t6, $t5, -120			# new y position - 120
+bgtz $t6, updateFrogYLowAdjust		# if new y too low, jump to adjust
+sw $t5, 4($a0)				# write y position into $a0
+j updateFrogReturn
+updateFrogYLowAdjust:
+addi $t5, $zero, 120			# new y position = 120
+sw $t5, 4($a0)				# write y position into $a0
+j updateFrogReturn
+# update x position
+updateFrogLR:
+lw $t5, 0($a0)				# load original x position into $t5
+add $t5, $t5, $a2			# calculate new x position
+bgtz $a2, updateFrogCheckXRight		# check if x position is too right ($a2 > 0 moved right (check too right), $a2 < 0 moved left (check too left)
+# handle new x too left (left overflow)
+blez $t5, updateFrogXLeftAdjust		# if new x too left, jump to left adjust
+sw $t5, 0($a0)				# write x position into $a0
+j updateFrogReturn
+updateFrogXLeftAdjust:
+addi $t5, $zero, 4			# new x position = 4
+sw $t5, 0($a0)				# write x position into $a0
+j updateFrogReturn
+# hanlde new x too right (right overflow)
+updateFrogCheckXRight:
+addi $t6, $t5, -120			# new x position - 120
+bgtz $t6, updateFrogXRightAdjust	# if new x too right, jump to adjust
+sw $t5, 0($a0)				# write x position into $a0
+j updateFrogReturn
+updateFrogXRightAdjust:
+addi $t5, $zero, 120			# new x position = 120
+sw $t5, 0($a0)				# write x position into $a0
+j updateFrogReturn
+updateFrogReturn:
+jr $ra
+
+
 drawFrog:
 # Draw frog given memory address of frog array 
 # $a0 address to frog array, $a1 stores one color of frog, $a2 stores the other color of frog
@@ -119,29 +176,6 @@ sw $a1, 0($t0)
 # set $t0 back to location 0
 # lw $t0, displayAddress
 jr $ra
-
-drawLogCar2:
-# Draw log or car given color and array of car/log location
-# $a0 stores memory address of car/log row array, $a1 stores color of car or log
-# add $t1, $a0, $zero		# store another copy of index in car/log array in $t1
-lw $t0, displayAddress 		# $t0 stores the base address for display
-add $t6, $zero, $zero		# $t6 stores which row in the car/log row we are at
-lw $t7, 0($a0)			# load start location of first row of car/log row into $t7
-addi $a0, $a0, 4
-lw $t8, 0($a0)			# load start location of second row of car/log row into $t8
-addi $a0, $a0, 4
-lw $t9, 0($a0)			# load start location of third row of car/log row into $t9
-add $t1, $t0, $t7		# $t1 stores the index in bitmap memory, which is now at the start location of car/log row
-addi $a0, $a0, 4		# move $a0 (index) to the first x position in the array
-# store calculated bitmap memory loation of first x position of car/log in $t4
-lw $t4, 0($a0)	
-add $t4, $t4, $t0
-add $t4, $t4, $t7	
-
-bne $t1, $t4, loopBack
-sw $a1, 0($t1)
-addi $a0, $a0, 4		# move $a0 (index) to the next x position in the array	
-loopBack:
 
 
 setLogCar2:
@@ -607,6 +641,12 @@ la $a0, carRow3Simple
 addi $a1, $zero, 0
 jal updateLogCar
 
+# UPDATE FROG
+la $a0, frogPosition
+addi $a1, $zero, 0
+addi $a2, $zero, -12 
+jal updateFrog
+
 # REDRAW LOGROW1
 la $a0 logRow1Simple
 lw $a2 waterColor
@@ -643,8 +683,14 @@ lw $a2 roadColor
 lw $a3 carColor
 jal redrawLogCarLeft
 
+# DRAW FROG
+la $a0, frogPosition
+lw $a1, frogLightColor 		# load light color of frog into $a1
+lw $a2, frogDarkColor 		# load dark color of frog into $a2
+jal drawFrog
+
 li $v0, 32
-li $a0, 17
+li $a0, 500
 syscall
 
 j MainLoop
