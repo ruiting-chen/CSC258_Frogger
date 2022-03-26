@@ -215,6 +215,7 @@ setlgReturn:
 jr $ra
 
 
+##################### Set LogCar array: starting location of Lar/Car row; (width of 2 log/car) * 4; x position of first log/car; x position of second log/car #######################
 setLogCar:
 # $a0 stores start location of row (locations in first row: 0, 4, 8, ... , 124)
 # $a1 stores start x position of car/log 1, $a2 stores start x position for car/log 2
@@ -253,6 +254,7 @@ setlg2Return:
 jr $ra
 
 
+#################### Update LogCar array: starting location of Lar/Car row; (width of 2 log/car) * 4; x position of first log/car; x position of second log/car ######################
 updateLogCar:
 # $a0 stores the memory address of a log/car row, $a1 stores move left(0) or right(1)
 addi $t7, $zero, 1 			# $t7 is used to test whether move left or right
@@ -290,6 +292,9 @@ updatelcReturn:
 jr $ra
 
 
+##################### Draw LogCar array: starting location of Lar/Car row; (width of 2 log/car) * 4; x position of first log/car; x position of second log/car #######################
+############ Draw by comparing first bitmap memory location of the row with calculated bitmap memory location of first x postion of first car/log, second with second ...#############
+################################################################################### !!! FLAWED !!! ###################################################################################
 drawLogCar:
 # takes in memory address from one of the log/car simplyfied array and converts into an 
 # actual array of locations 
@@ -304,6 +309,7 @@ addi $t9, $a0, 4 		# $t9 stores log/car simplyfied index in array
 lw $t3, 0($t9) 			# $t3 stores total width * 4 of a 2 car/log
 add $t4, $zero, 3		# $t4 stores the height * 4 of car/log
 add $t5, $zero, $zero 		# $t5 stores the current height increase
+lw $t7, 0($a0) 			# load start location offset into $t7
 addi $t9,$t9, 4 		# $t9 is moved to the first x positions
 lcDraw:
 beq $t0, $t8, lcDrawReturn
@@ -311,7 +317,6 @@ lcConvertLoop1:
 beq $t2, $t4,lcNoObj
 lcConvertLoop2:
 beq $t1, $t3, lcConvertWidthReset
-lw $t7, 0($a0) 			# load start location offset into $t7
 lw $t6, 0($t9) 			# load x position into $t6 (width adjustment)
 add $t6, $t6, $t7 		# add the width adjustment to offset
 add $t6, $t6, $t5 		# add the height adjustment to offset
@@ -321,13 +326,13 @@ sw $a3, 0($t0)			# store log/car color at this location
 addi $t0, $t0, 4 		# increment index in bitmap
 addi $t1, $t1, 4 		# increment width count
 addi $t9, $t9, 4 		# increment x position index $t9
-j lcConvertLoop2
+j lcDraw
 lcConvertWidthReset:
 add $t1, $zero, $zero		# reset witdh counter
 sub $t9, $t9, $t3		# reset x positions (array index)
 addi $t2, $t2, 1		# increment height count
 addi $t5, $t5, 128		# increment height increase number
-j lcConvertLoop1
+j lcDraw
 lcNoObj:
 sw $a2, 0($t0)			# store road/water color at this location
 addi $t0, $t0, 4 		# increment index in bitmap
@@ -336,6 +341,8 @@ lcDrawReturn:
 jr $ra
 
 
+################# Redraw LogCar array Right: starting location of Lar/Car row; (width of 2 log/car) * 4; x position of first log/car; x position of second log/car ###################
+###################### Redraw by painting right most column of new car/log and repainting left most column of old car/log back to road/water for both cars/logs ######################
 redrawLogCarRight:
 # $a0 stores the memory address of the aray that stores a row of log.car
 # $a2 stores color of water/road, $a3 stores color of log/car
@@ -398,6 +405,8 @@ sw $a3, 0($t4)
 jr $ra
 
 
+################## Redraw LogCar array Left: starting location of Lar/Car row; (width of 2 log/car) * 4; x position of first log/car; x position of second log/car ###################
+###################### Redraw by painting left most column of new car/log and repainting right most column of old car/log back to road/water for both cars/logs ######################
 redrawLogCarLeft:
 # $a0 stores the memory address of the aray that stores a row of log.car
 # $a2 stores color of water/road, $a3 stores color of log/car
@@ -648,10 +657,15 @@ addi $a2, $zero, -12
 jal updateFrog
 
 # REDRAW LOGROW1
+# la $a0 logRow1Simple
+# lw $a2 waterColor
+# lw $a3 logColor
+# jal redrawLogCarRight
 la $a0 logRow1Simple
+lw $a1 displayAddress
 lw $a2 waterColor
 lw $a3 logColor
-jal redrawLogCarRight
+jal drawLogCar # *******************************************************************
 
 # REDRAW LOGROW2
 la $a0 logRow2Simple
