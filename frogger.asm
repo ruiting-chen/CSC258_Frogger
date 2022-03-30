@@ -13,12 +13,12 @@
 # - Base Address for Display: 0x10008000 ($gp)
 #
 # Which milestone is reached in this submission?
-# - Milestone 1/2/3/4/5 (choose the one the applies)
+# - Milestone 3 
 #
 # Which approved additional features have been implemented?
 # (See the assignment handout for the list of additional features)
-# 1. (fill in the feature, if any)
-# 2. (fill in the feature, if any)
+# 1. add a third row of water and road - Easy Feature
+# 2. add a death/respawn animation - Easy Feature
 # 3. (fill in the feature, if any)
 # ... (add more if necessary)
 #
@@ -37,17 +37,26 @@ carColor: .word 0x00ad1c0c
 startColor: .word 0x00408a29
 safeColor: .word 0x00baa625
 goalColor: .word 0x00408a29
+goalBlockColor: .word 0x002a591b
 
 frogLightColor: .word 0x00b800a8
 frogDarkColor: .word 0x00570251
-frogDieLightColor1: .word 0x00d97109
-frogDieDarkColor1: .word 0x008f4a04
-frogDieLightColor2: .word 0x00b0e805
-frogDieDarkColor2: .word 0x0081ab02
+frogDieLightColor1: .word 0x00b0e805
+frogDieDarkColor1: .word 0x0081ab02
+frogDieLightColor2: .word 0x00d97109
+frogDieDarkColor2: .word 0x008f4a04
+frogLifeColor: .word 0x00d6384f
 frogPosition: .space 8
 frogDie: .word 1 		# alive = 1, die = 0
+frogLifeArray: .word 1:3 	# life remaining array is an array with 3 elements, 1 = life, 0 = no life
+frogLifeRemain: .word 3 	# number of life remaining, start with 3
+frogPassLevel: .word 0		# Passed = 1, not passed = 0
+goalReached: .word 0		# goal reached = 1, goal not reached = 0
+frogGoalRemain: .word 3 	# goal position remaining = 3 at the begining
 
 goalStart: .word 0
+lifeRowStart: .word 128
+goalRowStart: .word 640
 safeStart: .word 2176
 startStart: .word 3712
 logRowStart1: .word 1024
@@ -57,6 +66,7 @@ carRowStart1: .word 2560
 carRowStart2: .word 2944
 carRowStart3: .word 3328
 
+goalRow: .word 0:32
 logRow1: .space 128
 logRow2: .space 128
 logRow3: .space 128
@@ -67,14 +77,17 @@ carRow3: .space 128
 carLogSpeed: .word 10 		# how many main loop cycles to update car/log position once
 carLogCurrLap: .space 4		# which cycles is car/log currently on
 
+goalRowMiddle: .word 24
 logRow1Middle: .word 36
 logRow2Middle: .word 48
 logRow3Middle: .word 60
 carRow1Middle: .word 84
 carRow2Middle: .word 96
 carRow3Middle: .word 108
+
+retryMessage: .asciiz "Do you want to Retry?"
 .text
-j Main
+j Setup
 storeRec:
 # Store a full width rectangle to screen with a given color, starting location, and end location
 # $a0 stores start location, $a1 stores end location, $a2 stores color
@@ -87,6 +100,135 @@ sw $a2, 0($t0) 			# paint the unit with $a2 color at the location in $t0
 addi $t0, $t0, 4 		# move to the next location to paint
 j storeRecLoop
 storeRecReturn:
+jr $ra
+
+
+setGoalRow:
+# $a0 stores the memory address of goal row
+addi $t2, $zero, 4		# $t2 stores max width of goal block 
+addi $t3, $zero, 1		# $t3 stores indicator for goal region
+add $t0, $zero, $zero 		# $t0 is the block index counter
+# GOAL 1
+setGoalBlock1:
+add $t1, $a0, 20		# move $t1 to start of goal block 1
+add $t0, $zero, $zero 		# reset block index counter
+setGoalBlock1Loop:
+beq $t0, $t2, setGoalBlock2
+sw $t3, 0($t1)
+addi $t1, $t1, 4
+addi $t0, $t0, 1
+j setGoalBlock1Loop
+# GOAL 2
+setGoalBlock2:
+add $t1, $a0, 56		# move $t1 to start of goal block 1
+add $t0, $zero, $zero 		# reset block index counter
+setGoalBlock2Loop:
+beq $t0, $t2, setGoalBlock3
+sw $t3, 0($t1)
+addi $t1, $t1, 4
+addi $t0, $t0, 1
+j setGoalBlock2Loop
+# GOAL 3
+setGoalBlock3:
+add $t1, $a0, 92		# move $t1 to start of goal block 1
+add $t0, $zero, $zero 		# reset block index counter
+setGoalBlock3Loop:
+beq $t0, $t2, setGoalRowReturn
+sw $t3, 0($t1)
+addi $t1, $t1, 4
+addi $t0, $t0, 1
+j setGoalBlock3Loop
+setGoalRowReturn:
+jr $ra
+
+
+updateGoalRow:
+# $a0 stores the memory address of goal row, $a1 stores the x position frog is in
+addi $t0, $zero, 4		# $t0 stores max width of goal block 
+addi $t1, $zero, 24		# frog is in region of first goal
+addi $t2, $zero, 28		# frog is in region of first goal
+addi $t3, $zero, 60		# frog is in region of second goal
+addi $t4, $zero, 64		# frog is in region of second goal
+addi $t5, $zero, 96		# frog is in region of third goal
+addi $t6, $zero, 100		# frog is in region of third goal
+add $t7, $zero, $zero 		# $t7 is block index counter
+beq $a1, $t1, updateGoalBlock1
+beq $a1, $t2, updateGoalBlock1
+beq $a1, $t3, updateGoalBlock2
+beq $a1, $t4, updateGoalBlock2
+beq $a1, $t5, updateGoalBlock3
+beq $a1, $t6, updateGoalBlock3
+# UPDATE GOAL BLOCK 1
+updateGoalBlock1:
+addi, $a0, $a0, 20		# move index in goal row to first goal block
+updateGoalBlock1Loop:
+beq $t7, $t0, updateGoalRowReturn
+sw $zero, 0($a0)
+addi $a0, $a0, 4
+addi $t7, $t7, 1
+j updateGoalBlock1Loop
+# UPDATE GOAL BLOCK 2
+updateGoalBlock2:
+addi, $a0, $a0, 56		# move index in goal row to second goal block
+updateGoalBlock2Loop:
+beq $t7, $t0, updateGoalRowReturn
+sw $zero, 0($a0)
+addi $a0, $a0, 4
+addi $t7, $t7, 1
+j updateGoalBlock2Loop
+# UPDATE GOAL BLOCK 3
+updateGoalBlock3:
+addi, $a0, $a0, 92		# move index in goal row to second goal block
+updateGoalBlock3Loop:
+beq $t7, $t0, updateGoalRowReturn
+sw $zero, 0($a0)
+addi $a0, $a0, 4
+addi $t7, $t7, 1
+j updateGoalBlock3Loop
+updateGoalRowReturn:
+jr $ra
+
+
+updateLife:
+# $a0 stores the address to frogLifeArray, $a1 stores number of frog life remaining
+add $t1, $zero, $zero 		# $t1 is index counter to life remain array
+addi $t2, $zero, 3		# $t2, is max index for life remain array
+addi $t3, $zero, 1		# $t3 stores indicator value for to indicate there is a life
+updateLifeLoop:
+beq $t1, $t2, updateLifeReturn
+ble $t1, $a1, updateLifeIsLife
+sw $zero, 0($a0)
+addi $t1, $t1, 1		# increment index counter
+addi $a0, $a0, 4		# move to next stored value in array
+j updateLifeLoop
+updateLifeIsLife:
+sw $t3, 0($a0)
+addi $t1, $t1, 1		# increment index counter
+addi $a0, $a0, 4		# move to next stored value in array
+j updateLifeLoop
+updateLifeReturn:
+jr $ra
+
+
+storeLife:
+# $a0 stores the address to frogLifeRemain array, $a1 stores color of frog life
+la $t0, screen
+lw $t4, lifeRowStart
+add $t0, $t0, $t4		# move $t0 to start of life row
+addi $t0, $t0, 4		# move $t0 to first life position
+add $t1, $zero, $zero 		# $t1 is index counter to life remain array
+addi $t2, $zero, 3		# $t2, is max index for life remain array
+storeLifeLoop:
+beq $t1, $t2, storeLifeReturn
+lw $t3, 0($a0)			# $t3 stores indicator value from life remain array
+beq $t3, $zero, storeLifeMoveToNext
+sw $a1, 0($t0)
+storeLifeMoveToNext:
+addi $t0, $t0, 8		# move $t0 to the next life position
+addi $t1, $t1, 1		# increment index counter
+addi $a0, $a0, 4		# move to next stored value in array
+j storeLifeLoop
+storeLifeReturn:
 jr $ra
 
 
@@ -217,8 +359,8 @@ jr $ra
 
 
 checkFrogHitCar:
-# given a row that the frog is in, check if frog his car on that row, returns 0 if frog hit car, 1 if frog not hit car
-# $a0 stores the address of the log row, $a1 stores x position of frog
+# given a row that the frog is in, check if frog hits car on that row, returns 0 if frog hit car, 1 if frog not hit car
+# $a0 stores the address of the car  row, $a1 stores x position of frog
 add $a0, $a0, $a1			# move index in array to position of frog
 lw $t7, 0($a0)				
 bne $t7, $zero, frogHitCar		# if x position is not 0 (there is log), frog hit car
@@ -233,6 +375,28 @@ addi $sp, $sp, -4
 sw $t7, 0($sp)			
 jr $ra
 frogHitCar:				# if frog hit car, return 0
+addi $sp, $sp, -4
+sw $zero, 0($sp)
+jr $ra
+
+
+checkFrogReachGoal:
+# given a row that the frog is in, check if frog reached goal, returns 0 if frog did not reach goal(dies), 1 if frog reached goal
+# $a0 stores the address of the goal row, $a1 stores x position of frog
+add $a0, $a0, $a1			# move index in array to position of frog
+lw $t7, 0($a0)				
+beq $t7, $zero, frogNotReach		# if x position is not 0 (there is log), frog not reach goal
+addi $a0, $a0, 4			# move 1 pixel right from x position
+lw $t7, 0($a0)				
+beq $t7, $zero, frogNotReach		# if x position + 4 is not 0 (there is log),but x position is 0, frog not reach goal
+addi $a0, $a0, -8			# move 1 pixel left from x position
+lw $t7, 0($a0)				
+beq $t7, $zero, frogNotReach		# if x position - 4 is not 0 (there is log),but x position is 0, frog not reach goal
+addi $t7, $t7, 1			# if all above positions not equal 0, frog is reached goal, return 1
+addi $sp, $sp, -4
+sw $t7, 0($sp)			
+jr $ra
+frogNotReach:				# if frog hit car, return 0
 addi $sp, $sp, -4
 sw $zero, 0($sp)
 jr $ra
@@ -374,9 +538,28 @@ j drawScreenLoop
 drawScreenReturn:
 jr $ra
 
+Setup:
+# SET GOALROW
+la $a0, goalRow
+jal setGoalRow
 
 Main:
+# CHECK IF PASSED LEVEL
+lw $t1, frogGoalRemain
+beq $t1, $zero, Exit		# if frogGoalRemain == 0, frog have passed level
+
+# CHECK FROG LIFE REMAIN
+lw $t1, frogLifeRemain		# load frog life remain into $t1
+bne $t1, $zero, initialize	# if life remaining != 0, jump to initialize (restart the game)
+li $v0, 50
+la $a0, retryMessage
+syscall
+bne $a0, $zero, Exit		# if didn't choose yes, exit the game
+addi $t1, $zero, 3
+sw $t1, frogLifeRemain		# change frog life remain back to 3
+
 # LOG, CAR, FROG POSITION SET UP
+initialize:
 # SET LOGROW1
 la $a0, logRow1
 lw $a1, logRowStart1
@@ -455,9 +638,16 @@ sw $zero, 0($t0)		# carLogCurrLap = 0
 
 # STORE GOAL REGION
 add $a0, $zero, $zero 		# put start location of goal region into $a0
-addi $a1, $zero, 1024 		# put end location of goal region into $a1
+addi $a1, $zero, 640 		# put end location of goal region into $a1
 lw $a2, goalColor  		# load color of goal region into $a2
 jal storeRec
+
+# STORE GOALROW
+la $a0, goalRow
+lw $a1, goalRowStart
+lw $a2 goalColor
+lw $a3 goalBlockColor
+jal storeLogCar
 
 # STORE LOGROW1
 la $a0 logRow1
@@ -519,13 +709,38 @@ lw $a1, frogLightColor 		# load light color of frog into $a1
 lw $a2, frogDarkColor 		# load dark color of frog into $a2
 jal storeFrog
 
+# STORE FROG LIFE
+la $a0, frogLifeArray
+lw $a1, frogLifeColor
+jal storeLife
+
 # DRAW SCREEN
 jal drawScreen
 
 MainLoop: 
+# CHECK IF GOAL REACHED
+lw $t1, goalReached 			# store if goal reached in $t1
+beq $t1, $zero, checkFrogDie		# if goalReached == 0, goal not reached
+sw $zero, goalReached			# if goal is reached, reset goal reach and jump to Main
+j Main
+
 # CHECK IF FROG DIED
+checkFrogDie:
 lw $t1, frogDie 			# store the status(alove/dead) of frog in $t1
 bne $t1, $zero, alive			# if status != 0, frog is alive
+
+# UPDATE FROG LIFE
+lw $t1, frogLifeRemain			# load frog life remaining
+addi $t1, $t1, -1			# decrease life by 1
+sw $t1, frogLifeRemain			# store updated life reaming 
+la $a0, frogLifeArray
+lw $a1, frogLifeRemain
+jal updateLife				# update frog life remaining array 
+
+# STORE FROG LIFE
+la $a0, frogLifeArray
+lw $a1, frogLifeColor
+jal storeLife
 
 # STORE FROG (DIE COLOR 1)
 la $a0, frogPosition
@@ -535,7 +750,7 @@ jal storeFrog
 # DRAW SCREEN
 jal drawScreen
 li $v0, 32
-li $a0, 500
+li $a0, 300
 syscall
 
 # STORE FROG (DIE COLOR 2)
@@ -546,11 +761,23 @@ jal storeFrog
 # DRAW SCREEN
 jal drawScreen
 li $v0, 32
-li $a0, 500
+li $a0, 300
+syscall
+
+# STORE FROG (DIE COLOR 1)
+la $a0, frogPosition
+lw $a1, frogDieLightColor1 		# load light color of frog into $a1
+lw $a2, frogDieDarkColor1 		# load dark color of frog into $a2
+jal storeFrog
+# DRAW SCREEN
+jal drawScreen
+li $v0, 32
+li $a0, 300
 syscall
 
 addi $t1, $zero, 1			# change frog to alive
 sw $t1, frogDie
+
 j Main
 
 ########################################################################################################################################################
@@ -688,7 +915,7 @@ updateclLap:
 addi $t2, $t2, 1
 sw $t2, 0($t3)				# increment carLogCurrLap by 1
 
-# CHECK WHETHER FROG DIES
+# CHECK WHETHER FROG DIES/REACH GOAL
 frogDieCheck:
 la $t0, frogPosition
 lw $t1, 4($t0)				# load y position of frog into $t1
@@ -698,66 +925,87 @@ lw $t4, logRow3Middle			# $t4 stores middle height of log row 3
 lw $t5, carRow1Middle			# $t5 stores middle height of car row 1
 lw $t6, carRow2Middle			# $t6 stores middle height of car row 2
 lw $t7, carRow3Middle			# $t7 stores middle height of car row 3
-beq $t1, $t2, checkFrogDieLogRow1	# move frog right with log (log row 1)
-beq $t1, $t3, checkFrogDieLogRow2	# move frog left with log (log row 2)
-beq $t1, $t4, checkFrogDieLogRow3	# move frog right with log (log row 3)
-beq $t1, $t5, checkFrogDieCarRow1	# move frog right with log (log row 1)
-beq $t1, $t6, checkFrogDieCarRow2	# move frog left with log (log row 2)
-beq $t1, $t7, checkFrogDieCarRow3	# move frog right with log (log row 3)
+lw $t8, goalRowMiddle			# $t8 stores middle height of goal row
+beq $t1, $t2, checkFrogDieLogRow1
+beq $t1, $t3, checkFrogDieLogRow2	
+beq $t1, $t4, checkFrogDieLogRow3	
+beq $t1, $t5, checkFrogDieCarRow1	
+beq $t1, $t6, checkFrogDieCarRow2	
+beq $t1, $t7, checkFrogDieCarRow3	
+beq $t1, $t8, checkFrogOnGoalBlock	
 j store					# if frog is not in any of the above rows, frog is not in the water or road region
 # CHECK FROG DIE WITH LOG ROW 1
 checkFrogDieLogRow1:
 lw $a1, 0($t0)				# $a1 stores x position of frog
 la $a0 logRow1				# $a0 stores address of log row 1 array
 jal checkFrogOnLog
-lw $t8, 0($sp)				# load return value from $sp
+lw $t9, 0($sp)				# load return value from $sp
 addi $sp, $sp, 4
-beq $t8, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
+beq $t9, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
 j store	
 # CHECK FROG DIE WITH LOG ROW 2
 checkFrogDieLogRow2:
 lw $a1, 0($t0)				# $a1 stores x position of frog
 la $a0 logRow2				# $a0 stores address of log row 2 array
 jal checkFrogOnLog
-lw $t8, 0($sp)				# load return value from $sp
+lw $t9, 0($sp)				# load return value from $sp
 addi $sp, $sp, 4
-beq $t8, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
+beq $t9, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
 j store	
 # CHECK FROG DIE WITH LOG ROW 3
 checkFrogDieLogRow3:
 lw $a1, 0($t0)				# $a1 stores x position of frog
 la $a0 logRow3				# $a0 stores address of log row 3 array
 jal checkFrogOnLog
-lw $t8, 0($sp)				# load return value from $sp
+lw $t9, 0($sp)				# load return value from $sp
 addi $sp, $sp, 4
-beq $t8, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
+beq $t9, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
 j store	
 # CHECK FROG DIE WITH CAR ROW 1
 checkFrogDieCarRow1:
 lw $a1, 0($t0)				# $a1 stores x position of frog
 la $a0 carRow1				# $a0 stores address of car row 1 array
 jal checkFrogHitCar
-lw $t8, 0($sp)				# load return value from $sp
+lw $t9, 0($sp)				# load return value from $sp
 addi $sp, $sp, 4
-beq $t8, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
+beq $t9, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
 j store	
 # CHECK FROG DIE WITH CAR ROW 2
 checkFrogDieCarRow2:
 lw $a1, 0($t0)				# $a1 stores x position of frog
 la $a0 carRow2				# $a0 stores address of car row 2 array
 jal checkFrogHitCar
-lw $t8, 0($sp)				# load return value from $sp
+lw $t9, 0($sp)				# load return value from $sp
 addi $sp, $sp, 4
-beq $t8, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
+beq $t9, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
 j store	
+# CHECK FROG DIE WITH CAR ROW 3
 checkFrogDieCarRow3:
 lw $a1, 0($t0)				# $a1 stores x position of frog
 la $a0 carRow3				# $a0 stores address of car row 3 array
 jal checkFrogHitCar
-lw $t8, 0($sp)				# load return value from $sp
+lw $t9, 0($sp)				# load return value from $sp
 addi $sp, $sp, 4
-beq $t8, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
-j store				
+beq $t9, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
+j store	
+# CHECK FROG REACH GOAL
+checkFrogOnGoalBlock:	
+lw $a1, 0($t0)				# $a1 stores x position of frog
+la $a0 goalRow				# $a0 stores address of goal Row array
+jal checkFrogReachGoal
+lw $t9, 0($sp)				# load return value from $sp
+addi $sp, $sp, 4
+beq $t9, $zero, updateFrogDie		# return = 0, frog not reach goal, frog dies
+la $t0, frogPosition			# return = 1, update goal row
+la $a0, goalRow
+lw $a1, 0($t0)				# $a1 stores x position of frog
+jal updateGoalRow
+lw $t0, frogGoalRemain			# decrease avaliable goal block by 1
+addi $t0, $t0, -1			
+sw $t0, frogGoalRemain	
+addi $t0, $t0, 1			# update goal reached		
+sw $t0, goalReached		
+j store			
 updateFrogDie:
 sw $zero, frogDie 			# store the status(alove/dead) of frog in $t1
 
@@ -765,9 +1013,16 @@ sw $zero, frogDie 			# store the status(alove/dead) of frog in $t1
 store:
 # STORE GOAL REGION
 add $a0, $zero, $zero 		# put start location of goal region into $a0
-addi $a1, $zero, 1024 		# put end location of goal region into $a1
+addi $a1, $zero, 640 		# put end location of goal region into $a1
 lw $a2, goalColor  		# load color of goal region into $a2
 jal storeRec
+
+# STORE GOALROW
+la $a0, goalRow
+lw $a1, goalRowStart
+lw $a2 goalColor
+lw $a3 goalBlockColor
+jal storeLogCar
 
 # STORE LOGROW1
 la $a0 logRow1
@@ -828,6 +1083,11 @@ la $a0, frogPosition
 lw $a1, frogLightColor 		# load light color of frog into $a1
 lw $a2, frogDarkColor 		# load dark color of frog into $a2
 jal storeFrog
+
+# STORE FROG LIFE
+la $a0, frogLifeArray
+lw $a1, frogLifeColor
+jal storeLife
 
 # DRAW SCREEN
 jal drawScreen
