@@ -37,9 +37,15 @@ carColor: .word 0x00ad1c0c
 startColor: .word 0x00408a29
 safeColor: .word 0x00baa625
 goalColor: .word 0x00408a29
+
 frogLightColor: .word 0x00b800a8
 frogDarkColor: .word 0x00570251
+frogDieLightColor1: .word 0x00d97109
+frogDieDarkColor1: .word 0x008f4a04
+frogDieLightColor2: .word 0x00b0e805
+frogDieDarkColor2: .word 0x0081ab02
 frogPosition: .space 8
+frogDie: .word 1 		# alive = 1, die = 0
 
 goalStart: .word 0
 safeStart: .word 2176
@@ -58,8 +64,15 @@ carRow1: .space 128
 carRow2: .space 128
 carRow3: .space 128
 
-carLogSpeed: .word 5 		# how many main loop cycles to update car/log position once
+carLogSpeed: .word 10 		# how many main loop cycles to update car/log position once
 carLogCurrLap: .space 4		# which cycles is car/log currently on
+
+logRow1Middle: .word 36
+logRow2Middle: .word 48
+logRow3Middle: .word 60
+carRow1Middle: .word 84
+carRow2Middle: .word 96
+carRow3Middle: .word 108
 .text
 j Main
 storeRec:
@@ -178,6 +191,50 @@ addi $t0, $t0, -4
 sw $a2, 0($t0) 
 addi $t0, $t0, -4
 sw $a1, 0($t0) 
+jr $ra
+
+
+checkFrogOnLog:
+# given a row that the frog is in, check if frog is on a log in that row, returns 0 if frog not on log, 1 if frog on log
+# $a0 stores the address of the log row, $a1 stores x position of frog
+add $a0, $a0, $a1			# move index in array to position of frog
+lw $t7, 0($a0)				
+bne $t7, $zero, frogOnLog		# if x position is not 0 (there is log), frog on log
+addi $a0, $a0, 4			# move 1 pixel right from x position
+lw $t7, 0($a0)				
+bne $t7, $zero, frogOnLog		# if x position + 4 is not 0 (there is log),but x position is 0, frog on log
+addi $a0, $a0, -8			# move 1 pixel left from x position
+lw $t7, 0($a0)				
+bne $t7, $zero, frogOnLog		# if x position - 4 is not 0 (there is log),but x position is 0, frog on log
+addi $sp, $sp, -4
+sw $zero, 0($sp)			# if all above positions equal 0, frog is not on log, return 0
+jr $ra
+frogOnLog:				# if frog is on log, return 1
+addi $t7, $t7, 1
+addi $sp, $sp, -4
+sw $t7, 0($sp)
+jr $ra
+
+
+checkFrogHitCar:
+# given a row that the frog is in, check if frog his car on that row, returns 0 if frog hit car, 1 if frog not hit car
+# $a0 stores the address of the log row, $a1 stores x position of frog
+add $a0, $a0, $a1			# move index in array to position of frog
+lw $t7, 0($a0)				
+bne $t7, $zero, frogHitCar		# if x position is not 0 (there is log), frog hit car
+addi $a0, $a0, 4			# move 1 pixel right from x position
+lw $t7, 0($a0)				
+bne $t7, $zero, frogHitCar		# if x position + 4 is not 0 (there is log),but x position is 0, frog hit car
+addi $a0, $a0, -8			# move 1 pixel left from x position
+lw $t7, 0($a0)				
+bne $t7, $zero, frogHitCar		# if x position - 4 is not 0 (there is log),but x position is 0, frog hit car
+addi $t7, $t7, 1			# if all above positions equal 0, frog is does not hit car, return 1
+addi $sp, $sp, -4
+sw $t7, 0($sp)			
+jr $ra
+frogHitCar:				# if frog hit car, return 0
+addi $sp, $sp, -4
+sw $zero, 0($sp)
 jr $ra
 
 
@@ -466,7 +523,38 @@ jal storeFrog
 jal drawScreen
 
 MainLoop: 
+# CHECK IF FROG DIED
+lw $t1, frogDie 			# store the status(alove/dead) of frog in $t1
+bne $t1, $zero, alive			# if status != 0, frog is alive
+
+# STORE FROG (DIE COLOR 1)
+la $a0, frogPosition
+lw $a1, frogDieLightColor1 		# load light color of frog into $a1
+lw $a2, frogDieDarkColor1 		# load dark color of frog into $a2
+jal storeFrog
+# DRAW SCREEN
+jal drawScreen
+li $v0, 32
+li $a0, 500
+syscall
+
+# STORE FROG (DIE COLOR 2)
+la $a0, frogPosition
+lw $a1, frogDieLightColor2 		# load light color of frog into $a1
+lw $a2, frogDieDarkColor2 		# load dark color of frog into $a2
+jal storeFrog
+# DRAW SCREEN
+jal drawScreen
+li $v0, 32
+li $a0, 500
+syscall
+
+addi $t1, $zero, 1			# change frog to alive
+sw $t1, frogDie
+j Main
+
 ########################################################################################################################################################
+alive:
 # CHECK KEYBOARD INPUT
 lw $t8, 0xffff0000		# load whether there is a keyboard event into $t8 (yes = 1, no = 0)
 beq $t8, 0, checkUpdateRest
@@ -516,54 +604,39 @@ sw $zero, 0($t3)			# reset carLogCurrLap to 0
 # UPDATE FROG WITH LOG 
 la $t0, frogPosition
 lw $t1, 4($t0)				# load y position of frog into $t2
-addi $t2, $zero, 36			# $t2 stores middle height of log row 1
-addi $t3, $zero, 48			# $t3 stores middle height of log row 2
-addi $t4, $zero, 60			# $t4 stores middle height of log row 3
+lw $t2, logRow1Middle			# $t2 stores middle height of log row 1
+lw $t3, logRow2Middle			# $t3 stores middle height of log row 2
+lw $t4, logRow3Middle			# $t4 stores middle height of log row 3
 beq $t1, $t2, updateFrogRLogRow1	# move frog right with log (log row 1)
 beq $t1, $t3, updateFrogLLogRow2	# move frog left with log (log row 2)
 beq $t1, $t4, updateFrogRLogRow3	# move frog right with log (log row 3)
 j updateRest				# if frog is not in any of the above rows, frog is not at the water region
 # UPDATE FROG RIGHT WITH LOG ROW 1
 updateFrogRLogRow1:
-lw $t5, 0($t0)				# $t5 stores x position of frog
-la $t6 logRow1				# $t6 stores address of log row 1 array
-add $t6, $t6, $t5			# move index in array to position of frog
-lw $t7, 0($t6)				
-bne $t7, $zero, updateFrogRightWithLog	# if x position is not 0 (there is log), update with log
-addi $t6, $t6, 4			# move 1 pixel right from x position
-lw $t7, 0($t6)				
-bne $t7, $zero, updateFrogRightWithLog	# if x position + 4 is not 0 (there is log),but x position is 0, update with log
-addi $t6, $t6, -8			# move 1 pixel left from x position
-lw $t7, 0($t6)				
-bne $t7, $zero, updateFrogRightWithLog	# if x position - 4 is not 0 (there is log),but x position is 0, update with log
-j updateRest				# if all above positions equal 0, frog is not on log, frog dies
+lw $a1, 0($t0)				# $a1 stores x position of frog
+la $a0 logRow1				# $a0 stores address of log row 1 array
+jal checkFrogOnLog
+lw $t5, 0($sp)				# load return value from $sp
+addi $sp, $sp, 4
+bne $t5, $zero, updateFrogRightWithLog
+j updateRest				# return = 0, frog is not on log, frog dies
 # UPDATE FROG LEFT WITH LOG ROW 2
 updateFrogLLogRow2:
-lw $t5, 0($t0)				# $t5 stores x position of frog
-la $t6 logRow2				# $t6 stores address of log row 2 array
-add $t6, $t6, $t5			# move index in array to position of frog
-lw $t7, 0($t6)				
-bne $t7, $zero, updateFrogLeftWithLog	# if x position is not 0 (there is log), update with log
-addi $t6, $t6, 4			# move 1 pixel right from x position
-lw $t7, 0($t6)				
-bne $t7, $zero, updateFrogLeftWithLog	# if x position + 4 is not 0 (there is log),but x position is 0, update with log
-addi $t6, $t6, -8			# move 1 pixel left from x position
-lw $t7, 0($t6)				
-bne $t7, $zero, updateFrogLeftWithLog	# if x position - 4 is not 0 (there is log),but x position is 0, update with log
+lw $a1, 0($t0)				# $a1 stores x position of frog
+la $a0 logRow2				# $a0 stores address of log row 2 array
+jal checkFrogOnLog
+lw $t5, 0($sp)				# load return value from $sp
+addi $sp, $sp, 4
+bne $t5, $zero, updateFrogLeftWithLog
 j updateRest				# if all above positions equal 0, frog is not on log, frog dies
 # UPDATE FROG RIGHT WITH LOG ROW 3
 updateFrogRLogRow3:
-lw $t5, 0($t0)				# $t5 stores x position of frog
-la $t6 logRow3				# $t6 stores address of log row 3 array
-add $t6, $t6, $t5			# move index in array to position of frog
-lw $t7, 0($t6)				
-bne $t7, $zero, updateFrogRightWithLog	# if x position is not 0 (there is log), update with log
-addi $t6, $t6, 4			# move 1 pixel right from x position
-lw $t7, 0($t6)				
-bne $t7, $zero, updateFrogRightWithLog	# if x position + 4 is not 0 (there is log),but x position is 0, update with log
-addi $t6, $t6, -8			# move 1 pixel left from x position
-lw $t7, 0($t6)				
-bne $t7, $zero, updateFrogRightWithLog	# if x position - 4 is not 0 (there is log),but x position is 0, update with log
+lw $a1, 0($t0)				# $a1 stores x position of frog
+la $a0 logRow3				# $a0 stores address of log row 3 array
+jal checkFrogOnLog
+lw $t5, 0($sp)				# load return value from $sp
+addi $sp, $sp, 4
+bne $t5, $zero, updateFrogRightWithLog
 j updateRest				# if all above positions equal 0, frog is not on log, frog dies
 updateFrogRightWithLog:
 la $a0, frogPosition
@@ -609,11 +682,84 @@ jal updateLogCar
 la $a0, carRow3
 addi $a1, $zero, 0
 jal updateLogCar
-j store
+j frogDieCheck				# jump to frogDieCheck
 
 updateclLap:
 addi $t2, $t2, 1
-sw $t2, 0($t3)			# increment carLogCurrLap by 1
+sw $t2, 0($t3)				# increment carLogCurrLap by 1
+
+# CHECK WHETHER FROG DIES
+frogDieCheck:
+la $t0, frogPosition
+lw $t1, 4($t0)				# load y position of frog into $t1
+lw $t2, logRow1Middle			# $t2 stores middle height of log row 1
+lw $t3, logRow2Middle			# $t3 stores middle height of log row 2
+lw $t4, logRow3Middle			# $t4 stores middle height of log row 3
+lw $t5, carRow1Middle			# $t5 stores middle height of car row 1
+lw $t6, carRow2Middle			# $t6 stores middle height of car row 2
+lw $t7, carRow3Middle			# $t7 stores middle height of car row 3
+beq $t1, $t2, checkFrogDieLogRow1	# move frog right with log (log row 1)
+beq $t1, $t3, checkFrogDieLogRow2	# move frog left with log (log row 2)
+beq $t1, $t4, checkFrogDieLogRow3	# move frog right with log (log row 3)
+beq $t1, $t5, checkFrogDieCarRow1	# move frog right with log (log row 1)
+beq $t1, $t6, checkFrogDieCarRow2	# move frog left with log (log row 2)
+beq $t1, $t7, checkFrogDieCarRow3	# move frog right with log (log row 3)
+j store					# if frog is not in any of the above rows, frog is not in the water or road region
+# CHECK FROG DIE WITH LOG ROW 1
+checkFrogDieLogRow1:
+lw $a1, 0($t0)				# $a1 stores x position of frog
+la $a0 logRow1				# $a0 stores address of log row 1 array
+jal checkFrogOnLog
+lw $t8, 0($sp)				# load return value from $sp
+addi $sp, $sp, 4
+beq $t8, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
+j store	
+# CHECK FROG DIE WITH LOG ROW 2
+checkFrogDieLogRow2:
+lw $a1, 0($t0)				# $a1 stores x position of frog
+la $a0 logRow2				# $a0 stores address of log row 2 array
+jal checkFrogOnLog
+lw $t8, 0($sp)				# load return value from $sp
+addi $sp, $sp, 4
+beq $t8, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
+j store	
+# CHECK FROG DIE WITH LOG ROW 3
+checkFrogDieLogRow3:
+lw $a1, 0($t0)				# $a1 stores x position of frog
+la $a0 logRow3				# $a0 stores address of log row 3 array
+jal checkFrogOnLog
+lw $t8, 0($sp)				# load return value from $sp
+addi $sp, $sp, 4
+beq $t8, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
+j store	
+# CHECK FROG DIE WITH CAR ROW 1
+checkFrogDieCarRow1:
+lw $a1, 0($t0)				# $a1 stores x position of frog
+la $a0 carRow1				# $a0 stores address of car row 1 array
+jal checkFrogHitCar
+lw $t8, 0($sp)				# load return value from $sp
+addi $sp, $sp, 4
+beq $t8, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
+j store	
+# CHECK FROG DIE WITH CAR ROW 2
+checkFrogDieCarRow2:
+lw $a1, 0($t0)				# $a1 stores x position of frog
+la $a0 carRow2				# $a0 stores address of car row 2 array
+jal checkFrogHitCar
+lw $t8, 0($sp)				# load return value from $sp
+addi $sp, $sp, 4
+beq $t8, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
+j store	
+checkFrogDieCarRow3:
+lw $a1, 0($t0)				# $a1 stores x position of frog
+la $a0 carRow3				# $a0 stores address of car row 3 array
+jal checkFrogHitCar
+lw $t8, 0($sp)				# load return value from $sp
+addi $sp, $sp, 4
+beq $t8, $zero, updateFrogDie		# return = 0, frog hit car, frog dies
+j store				
+updateFrogDie:
+sw $zero, frogDie 			# store the status(alove/dead) of frog in $t1
 
 ########################################################################################################################################################
 store:
