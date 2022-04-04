@@ -27,8 +27,34 @@
 #
 #####################################################################
 .data
-displayAddress: .word 0x10008000
-screen: .space 4096
+frogPosition: .space 8
+
+goalRow: .word 0:32
+logRow1: .space 128
+logRow2: .space 128
+logRow3: .space 128
+carRow1: .space 128
+carRow2: .space 128
+carRow3: .space 128
+
+goalStart: .word 0
+lifeRowStart: .word 128
+goalRowStart: .word 640
+safeStart: .word 2176
+startStart: .word 3712
+logRowStart1: .word 1024
+logRowStart2: .word 1408
+logRowStart3: .word 1792
+carRowStart1: .word 2560
+carRowStart2: .word 2944
+carRowStart3: .word 3328
+goalRowMiddle: .word 24
+logRow1Middle: .word 36
+logRow2Middle: .word 48
+logRow3Middle: .word 60
+carRow1Middle: .word 84
+carRow2Middle: .word 96
+carRow3Middle: .word 108
 
 waterColor: .word 0x002424a3
 roadColor: .word 0x00575757
@@ -46,46 +72,36 @@ frogDieDarkColor1: .word 0x0081ab02
 frogDieLightColor2: .word 0x00d97109
 frogDieDarkColor2: .word 0x008f4a04
 frogLifeColor: .word 0x00d6384f
-frogPosition: .space 8
-frogDie: .word 1 		# alive = 1, die = 0
-frogLifeArray: .word 1:3 	# life remaining array is an array with 3 elements, 1 = life, 0 = no life
+
+displayAddress: .word 0x10008000
+screen: .space 4096
+
+currLevel: .word 1		# current level that the game is in 
+maxLevel: .word 2 		# maximum level of the game
+goalRemain: .word 3 		# goal position remaining = 3 at the begining
+frogReachedGoal: .word 0	# 0 = not reached, 1 = reached 
+frogDied: .word 1 		# 0 = not die, 1 = die
 frogLifeRemain: .word 3 	# number of life remaining, start with 3
-frogPassLevel: .word 0		# Passed = 1, not passed = 0
-goalReached: .word 0		# goal reached = 1, goal not reached = 0
-frogGoalRemain: .word 3 	# goal position remaining = 3 at the begining
+frogLifeArray: .word 1:3 	# life remaining array is an array with 3 elements, 0 = no life, 1 = life
 
-goalStart: .word 0
-lifeRowStart: .word 128
-goalRowStart: .word 640
-safeStart: .word 2176
-startStart: .word 3712
-logRowStart1: .word 1024
-logRowStart2: .word 1408
-logRowStart3: .word 1792
-carRowStart1: .word 2560
-carRowStart2: .word 2944
-carRowStart3: .word 3328
-
-goalRow: .word 0:32
-logRow1: .space 128
-logRow2: .space 128
-logRow3: .space 128
-carRow1: .space 128
-carRow2: .space 128
-carRow3: .space 128
-
-carLogSpeed: .word 10 		# how many main loop cycles to update car/log position once
-carLogCurrLap: .space 4		# which cycles is car/log currently on
-
-goalRowMiddle: .word 24
-logRow1Middle: .word 36
-logRow2Middle: .word 48
-logRow3Middle: .word 60
-carRow1Middle: .word 84
-carRow2Middle: .word 96
-carRow3Middle: .word 108
+# carLogSpeed: .word 10 		# how many main loop cycles to update car/log position once
+# carLogCurrLap: .space 4		# which cycles is car/log currently on
+logRow1Speed: .word 10, 4	# speed of logRow1 in each level
+logRow2Speed: .word 10, 8	# speed of logRow2 in each level
+logRow3Speed: .word 10, 6	# speed of logRow3 in each level
+carRow1Speed: .word 10, 6	# speed of carRow1 in each level
+carRow2Speed: .word 10, 4	# speed of carRow2 in each level
+carRow3Speed: .word 10, 8	# speed of carRow3 in each level
+logRow1CurrentLap: .word 0	# which cycles is logRow1 currently on, if cycle(lap) == speed, update log position
+logRow2CurrentLap: .word 0	# which cycles is logRow2 currently on, if cycle(lap) == speed, update log position
+logRow3CurrentLap: .word 0	# which cycles is logRow3 currently on, if cycle(lap) == speed, update log position
+carRow1CurrentLap: .word 0	# which cycles is carRow1 currently on, if cycle(lap) == speed, update car position
+carRow2CurrentLap: .word 0	# which cycles is carRow2 currently on, if cycle(lap) == speed, update car position
+carRow3CurrentLap: .word 0	# which cycles is carRow3 currently on, if cycle(lap) == speed, update car position
 
 retryMessage: .asciiz "Do you want to Retry?"
+nextLevelMessage: .asciiz "Do you want to play the next level?"
+
 .text
 j Setup
 storeRec:
@@ -196,7 +212,7 @@ addi $t2, $zero, 3		# $t2, is max index for life remain array
 addi $t3, $zero, 1		# $t3 stores indicator value for to indicate there is a life
 updateLifeLoop:
 beq $t1, $t2, updateLifeReturn
-ble $t1, $a1, updateLifeIsLife
+blt $t1, $a1, updateLifeIsLife
 sw $zero, 0($a0)
 addi $t1, $t1, 1		# increment index counter
 addi $a0, $a0, 4		# move to next stored value in array
@@ -538,281 +554,245 @@ j drawScreenLoop
 drawScreenReturn:
 jr $ra
 
-Setup:
-# SET GOALROW
-la $a0, goalRow
-jal setGoalRow
 
+#####################################################################################################################################################################
 Main:
-# CHECK IF PASSED LEVEL
-lw $t1, frogGoalRemain
-beq $t1, $zero, Exit		# if frogGoalRemain == 0, frog have passed level
+# CHECK CURRENT LEVEL == MAX LEVEL
+checkNoMoreLevel:
+lw $t0, currLevel
+lw $t1, maxLevel
+beq $t0, $t1, Exit				# if currLevel == maxLevel (game ended), jump to Exit
 
-# CHECK FROG LIFE REMAIN
-lw $t1, frogLifeRemain		# load frog life remain into $t1
-bne $t1, $zero, initialize	# if life remaining != 0, jump to initialize (restart the game)
-li $v0, 50
-la $a0, retryMessage
-syscall
-bne $a0, $zero, Exit		# if didn't choose yes, exit the game
-addi $t1, $zero, 3
-sw $t1, frogLifeRemain		# change frog life remain back to 3
+# CHECK IF GOAL REMAIN == 0
+checkLevelPassed:
+lw $t1, goalRemain
+bne $t1, $zero, checkGoalReachedLastCycle	# if goalRemain != 0 (frog didn't pass level), jump to checkGoalReachedLastCycle
 
-# LOG, CAR, FROG POSITION SET UP
-initialize:
-# SET LOGROW1
-la $a0, logRow1
-lw $a1, logRowStart1
-addi $a2, $zero, 0 		# store start pixel of car/log 1 in $a1
-addi $a3, $zero, 64 		# store start pixel of car/log 2 in $a2
-# store width (num pixel * 4) of log.car in $sp
-addi $t3, $zero, 32
-addi $sp, $sp, -4
-sw, $t3, 0($sp)
-jal setLogCar 
-
-# SET LOGROW2
-la $a0, logRow2
-lw $a1, logRowStart2
-addi $a2, $zero, 24 		# store start pixel of car/log 1 in $a1
-addi $a3, $zero, 88 		# store start pixel of car/log 2 in $a2
-# store width (num pixel * 4) of log.car in $sp
-addi $t3, $zero, 32
-addi $sp, $sp, -4
-sw, $t3, 0($sp)
-jal setLogCar
-
-# SET LOGROW3
-la $a0, logRow3
-lw $a1, logRowStart3
-addi $a2, $zero, 12 		# store start pixel of car/log 1 in $a1
-addi $a3, $zero, 76 		# store start pixel of car/log 2 in $a2
-# store width (num pixel * 4) of log.car in $sp
-addi $t3, $zero, 32
-addi $sp, $sp, -4
-sw, $t3, 0($sp)
-jal setLogCar
-
-# SET CARROW1
-la $a0, carRow1
-lw $a1, carRowStart1
-addi $a2, $zero, 0 		# store start pixel of car/log 1 in $a1
-addi $a3, $zero, 64 		# store start pixel of car/log 2 in $a2
-# store width (num pixel * 4) of log.car in $sp
-addi $t3, $zero, 24
-addi $sp, $sp, -4
-sw, $t3, 0($sp)
-jal setLogCar
-
-# SET CARROW2
-la $a0, carRow2
-lw $a1, carRowStart2
-addi $a2, $zero, 24 		# store start pixel of car/log 1 in $a1
-addi $a3, $zero, 88 		# store start pixel of car/log 2 in $a2
-# store width (num pixel * 4) of log.car in $sp
-addi $t3, $zero, 24
-addi $sp, $sp, -4
-sw, $t3, 0($sp)
-jal setLogCar
-
-# SET CARROW3
-la $a0, carRow3
-lw $a1, carRowStart3
-addi $a2, $zero, 12 		# store start pixel of car/log 1 in $a1
-addi $a3, $zero, 76 		# store start pixel of car/log 2 in $a2
-# store width (num pixel * 4) of log.car in $sp
-addi $t3, $zero, 24
-addi $sp, $sp, -4
-sw, $t3, 0($sp)
-jal setLogCar
-
-# SET FROG
-addi $a0, $zero, 68
-addi $a1, $zero, 120
-la $a2, frogPosition
-jal setFrog
-
-# SET CAR LOG CURR LAP
-la $t0, carLogCurrLap 		# load carLogCurrLap address
-sw $zero, 0($t0)		# carLogCurrLap = 0
-
-# STORE GOAL REGION
-add $a0, $zero, $zero 		# put start location of goal region into $a0
-addi $a1, $zero, 640 		# put end location of goal region into $a1
-lw $a2, goalColor  		# load color of goal region into $a2
-jal storeRec
-
-# STORE GOALROW
-la $a0, goalRow
-lw $a1, goalRowStart
-lw $a2 goalColor
-lw $a3 goalBlockColor
-jal storeLogCar
-
-# STORE LOGROW1
-la $a0 logRow1
-lw $a1 logRowStart1
-lw $a2 waterColor
-lw $a3 logColor
-jal storeLogCar
-
-# STORE LOGROW2
-la $a0 logRow2
-lw $a1 logRowStart2
-lw $a2 waterColor
-lw $a3 logColor
-jal storeLogCar
-
-# STORE LOGROW3
-la $a0 logRow3
-lw $a1 logRowStart3
-lw $a2 waterColor
-lw $a3 logColor
-jal storeLogCar
-
-# STORE SAFE REGION
-addi $a0, $zero, 2176 		# put start location of safe region into $a0
-addi $a1, $zero, 2560		# put end location of safe region into $a1
-lw $a2, safeColor  		# load color of safe region into $a2
-jal storeRec
-
-# STORE CARROW1
-la $a0 carRow1
-lw $a1 carRowStart1
-lw $a2 roadColor
-lw $a3 carColor
-jal storeLogCar
-
-# STORE CARROW2
-la $a0 carRow2
-lw $a1 carRowStart2
-lw $a2 roadColor
-lw $a3 carColor
-jal storeLogCar
-
-# STORE CARROW3
-la $a0 carRow3
-lw $a1 carRowStart3
-lw $a2 roadColor
-lw $a3 carColor
-jal storeLogCar
-
-# STORE START REGION
-addi $a0, $zero, 3712 		# put start location of start region into $a0
-addi $a1, $zero, 4096 		# put end location of start region into $a1
-lw $a2, startColor  		# load color of start region into $a2
-jal storeRec
-
-# STORE FROG
-la $a0, frogPosition
-lw $a1, frogLightColor 		# load light color of frog into $a1
-lw $a2, frogDarkColor 		# load dark color of frog into $a2
-jal storeFrog
-
-# STORE FROG LIFE
-la $a0, frogLifeArray
-lw $a1, frogLifeColor
-jal storeLife
-
-# DRAW SCREEN
-jal drawScreen
-
-MainLoop: 
-# CHECK IF GOAL REACHED
-lw $t1, goalReached 			# store if goal reached in $t1
-beq $t1, $zero, checkFrogDie		# if goalReached == 0, goal not reached
-sw $zero, goalReached			# if goal is reached, reset goal reach and jump to Main
-j Main
-
-# CHECK IF FROG DIED
-checkFrogDie:
-lw $t1, frogDie 			# store the status(alove/dead) of frog in $t1
-bne $t1, $zero, alive			# if status != 0, frog is alive
-
-# UPDATE FROG LIFE
-lw $t1, frogLifeRemain			# load frog life remaining
-addi $t1, $t1, -1			# decrease life by 1
-sw $t1, frogLifeRemain			# store updated life reaming 
-la $a0, frogLifeArray
-lw $a1, frogLifeRemain
-jal updateLife				# update frog life remaining array 
-
-# STORE FROG LIFE
-la $a0, frogLifeArray
-lw $a1, frogLifeColor
-jal storeLife
-
-# STORE FROG (DIE COLOR 1)
-la $a0, frogPosition
-lw $a1, frogDieLightColor1 		# load light color of frog into $a1
-lw $a2, frogDieDarkColor1 		# load dark color of frog into $a2
-jal storeFrog
-# DRAW SCREEN
-jal drawScreen
-li $v0, 32
-li $a0, 300
-syscall
-
-# STORE FROG (DIE COLOR 2)
+# DISPLAY VICTORY DRAWING
+displayVictory:
+# victory screen: store frog (die color 2)
 la $a0, frogPosition
 lw $a1, frogDieLightColor2 		# load light color of frog into $a1
 lw $a2, frogDieDarkColor2 		# load dark color of frog into $a2
 jal storeFrog
-# DRAW SCREEN
+# draw screen
 jal drawScreen
 li $v0, 32
-li $a0, 300
+li $a0, 1000
 syscall
 
-# STORE FROG (DIE COLOR 1)
+# ASK IF CONTINUE TO PLAY
+askContinue:
+li $v0, 50
+la $a0, nextLevelMessage
+syscall
+bne $a0, $zero, Exit			# if $a0 != 0 (user didn't choose yes), jump to Exit
+
+# RESET goalRemain, frogReachedGoal, frogDied, (frogLifeRemain, frogLifeArray,) UPDATE currLevel
+resetForNextLevel:
+addi $t0, $zero, 3
+sw, $t0, goalRemain			# reset goalRemain to 3
+sw $zero, frogReachedGoal		# reset frogReachedGoal to 0 (not reached)
+sw $zero, frogDied			# reset frogDied to 0 (not die)
+lw $t0, currLevel			
+addi $t0, $t0, 1
+sw $t0, currLevel			# update currLevel
+j resetFrogLife				# jump to resetFrogLife
+
+# CHECK IF GOAL REACHED LAST ROUND
+checkGoalReachedLastCycle:
+lw $t0, frogReachedGoal
+beq $t0, $zero, checkFrogDiedLastCycle		# if $t0 == 0 (frog did not reached goal), jump to checkFrogDiedLastCycle
+
+# RESET frogReachedGoal
+resetForGoalReach:
+sw $zero, frogReachedGoal			# if goal is reached, reset frogReachedGoal to 0
+j resetFrogLogCar				# jump to resetFrogLogCar
+
+# CHECK IF FROG DIED
+checkFrogDiedLastCycle
+lw $t0, frogDied 			# store the status(alove/dead) of frog in $t1
+beq $t0, $zero, checkKeyPressed		# if status == 0 (frog is did not die), jump to checkKeyPressed
+
+# UPDATE frogLifeRemain, frogLifeArray, RESET frogDied
+updateForFrogDeath:
+# update frogLifeRemain
+lw $t1, frogLifeRemain			# load frog life remaining
+addi $t1, $t1, -1			# decrease life by 1
+sw $t1, frogLifeRemain			# store updated life reaming 
+# update frogLifeArray
+la $a0, frogLifeArray
+lw $a1, frogLifeRemain
+jal updateLife				# update frog life remaining array 
+# reset frogDied
+sw $zero, frogDied			# reset frogDied to 0 (not die)
+
+# DISPLAY FROG DEATH ANIMATION
+displayDeath:
+# die screen 1: store frog (die color 1)
 la $a0, frogPosition
 lw $a1, frogDieLightColor1 		# load light color of frog into $a1
 lw $a2, frogDieDarkColor1 		# load dark color of frog into $a2
 jal storeFrog
-# DRAW SCREEN
+# draw screen
+jal drawScreen
+li $v0, 32
+li $a0, 300
+syscall
+# die screen 2: store frog (die color 2)
+la $a0, frogPosition
+lw $a1, frogDieLightColor2 		# load light color of frog into $a1
+lw $a2, frogDieDarkColor2 		# load dark color of frog into $a2
+jal storeFrog
+# draw screen
+jal drawScreen
+li $v0, 32
+li $a0, 300
+syscall
+# die screen 3: store frog (die color 1)
+la $a0, frogPosition
+lw $a1, frogDieLightColor1 		# load light color of frog into $a1
+lw $a2, frogDieDarkColor1 		# load dark color of frog into $a2
+jal storeFrog
+# draw screen
 jal drawScreen
 li $v0, 32
 li $a0, 300
 syscall
 
-addi $t1, $zero, 1			# change frog to alive
-sw $t1, frogDie
+# CHECK IF FROG LOFE REMAIM == 0 (LOST ALL 3 LIVES)
+checkLostAllLife:
+lw $t0, frogLifeRemain			# load frog life remain into $t1
+bne $t0, $zero, resetFrogLogCar		# if life remaining != 0 (frog have not lost all lives), jump to resetFrogLogCar
 
-j Main
+# ASK IF RETRY LEVEL
+askRetry:
+li $v0, 50
+la $a0, retryMessage
+syscall
+bne $a0, $zero, Exit			# if $z0 != 0 (user didn't choose yes), jump to Exit
 
-########################################################################################################################################################
-alive:
-# CHECK KEYBOARD INPUT
-lw $t8, 0xffff0000		# load whether there is a keyboard event into $t8 (yes = 1, no = 0)
-beq $t8, 0, checkUpdateRest
-# CHECK WHICH KEY IS PRESSED
+# RESET frogLifeRemain, frogLifeArray
+resetFrogLife:
+addi $t1, $zero, 3
+sw $t1, frogLifeRemain			# change frog life remain back to 3
+la $a0, frogLifeArray
+lw $a1, frogLifeRemain
+jal updateLife				# update frog life remaining array 
+
+# RESET goalRow
+resetGoalRegion:
+la $a0, goalRow
+jal setGoalRow
+
+# RESET logRow, carRow, log/carRowLap, frogPosition
+resetFrogLogCar:
+# logRow1
+la $a0, logRow1
+lw $a1, logRowStart1
+addi $a2, $zero, 0 		# store start pixel of car/log 1 in $a1
+addi $a3, $zero, 64 		# store start pixel of car/log 2 in $a2
+addi $t3, $zero, 32
+addi $sp, $sp, -4
+sw, $t3, 0($sp)			# store width (num pixel * 4) of log.car in $sp
+jal setLogCar 
+# logRow2
+la $a0, logRow2
+lw $a1, logRowStart2
+addi $a2, $zero, 24 		# store start pixel of car/log 1 in $a1
+addi $a3, $zero, 88 		# store start pixel of car/log 2 in $a2
+addi $t3, $zero, 32
+addi $sp, $sp, -4
+sw, $t3, 0($sp)			# store width (num pixel * 4) of log.car in $sp
+jal setLogCar
+# logRow3
+la $a0, logRow3
+lw $a1, logRowStart3
+addi $a2, $zero, 12 		# store start pixel of car/log 1 in $a1
+addi $a3, $zero, 76 		# store start pixel of car/log 2 in $a2
+addi $t3, $zero, 32
+addi $sp, $sp, -4
+sw, $t3, 0($sp)			# store width (num pixel * 4) of log.car in $sp
+jal setLogCar
+# carRow1
+la $a0, carRow1
+lw $a1, carRowStart1
+addi $a2, $zero, 0 		# store start pixel of car/log 1 in $a1
+addi $a3, $zero, 64 		# store start pixel of car/log 2 in $a2
+addi $t3, $zero, 24
+addi $sp, $sp, -4
+sw, $t3, 0($sp)			# store width (num pixel * 4) of log.car in $sp
+jal setLogCar
+# carRow2
+la $a0, carRow2
+lw $a1, carRowStart2
+addi $a2, $zero, 24 		# store start pixel of car/log 1 in $a1
+addi $a3, $zero, 88 		# store start pixel of car/log 2 in $a2
+addi $t3, $zero, 24
+addi $sp, $sp, -4
+sw, $t3, 0($sp)			# store width (num pixel * 4) of log.car in $sp
+jal setLogCar
+# carRow3
+la $a0, carRow3
+lw $a1, carRowStart3
+addi $a2, $zero, 12 		# store start pixel of car/log 1 in $a1
+addi $a3, $zero, 76 		# store start pixel of car/log 2 in $a2
+addi $t3, $zero, 24
+addi $sp, $sp, -4
+sw, $t3, 0($sp)			# store width (num pixel * 4) of log.car in $sp
+jal setLogCar
+# log/carRowLap
+sw $zero, logRow1CurrentLap	
+sw $zero, logRow2CurrentLap
+sw $zero, logRow3CurrentLap
+sw $zero, carRow1CurrentLap
+sw $zero, carRow2CurrentLap
+sw $zero, carRow3CurrentLap
+# frogPosition
+addi $a0, $zero, 68
+addi $a1, $zero, 120
+la $a2, frogPosition
+jal setFrog
+j storeDraw
+
+#####################################################################################################################################################################
+# CHECK IF THERE IS KEYBOARD EVENT
+checkKeyPressed:
+lw $t8, 0xffff0000			# load whether there is a keyboard event into $t8 (yes = 1, no = 0)
+beq $t8, $zero, updateLogCar		# if $t8 == 0 (key is not pressed), jump to updateLogCar
+
+# CHECK IF (W/S/A/D) WAS PRESSED
+checkWhichKey:
 lw $t2, 0xffff0004		# load which key was pressed into $t2
 beq $t2, 0x77, respondUp	# 'w' pressed
 beq $t2, 0x73, respondDown	# 's' pressed
 beq $t2, 0x61, respondLeft	# 'a' pressed
 beq $t2, 0x64, respondRight	# 'd' pressed
-# UPDATE FROG UP
+j updateLogCar			# if key pressed was not w/a/s/d, jump to updateLogCar
+
+# UPDATE frogPosition
+# frog up
 respondUp:
 la $a0, frogPosition
 addi $a1, $zero, 0
 addi $a2, $zero, -12 
 jal updateFrog
 j checkUpdateRest
-# UPDATE FROG DOWN
+# frog down
 respondDown:
 la $a0, frogPosition
 addi $a1, $zero, 0
 addi $a2, $zero, 12 
 jal updateFrog
 j checkUpdateRest
-# UPDATE FROG LEFT
+# frog left
 respondLeft:
 la $a0, frogPosition
 addi $a1, $zero, 1
 addi $a2, $zero, -12 
 jal updateFrog
 j checkUpdateRest
-# UPDATE FROG RIGHT
+# frog right
 respondRight:
 la $a0, frogPosition
 addi $a1, $zero, 1
@@ -820,6 +800,9 @@ addi $a2, $zero, 12
 jal updateFrog
 j checkUpdateRest
 
+# UPDATE LOG CAR ROW IF NEEDED
+updateLogCar:
+# 
 # CHECK WHETHER NEED TO UPDATE THE OTHER OBJECTS
 checkUpdateRest:
 lw $t1, carLogSpeed
@@ -1000,103 +983,92 @@ la $t0, frogPosition			# return = 1, update goal row
 la $a0, goalRow
 lw $a1, 0($t0)				# $a1 stores x position of frog
 jal updateGoalRow
-lw $t0, frogGoalRemain			# decrease avaliable goal block by 1
+lw $t0, goalRemain			# decrease avaliable goal block by 1
 addi $t0, $t0, -1			
-sw $t0, frogGoalRemain	
+sw $t0, goalRemain	
 addi $t0, $t0, 1			# update goal reached		
-sw $t0, goalReached		
+sw $t0, frogReachedGoal		
 j store			
 updateFrogDie:
-sw $zero, frogDie 			# store the status(alove/dead) of frog in $t1
+sw $zero, frogDied 			# store the status(alove/dead) of frog in $t1
 
 ########################################################################################################################################################
-store:
-# STORE GOAL REGION
+# STORE AND DRAW ALL OBJECTS AND SLEEP
+storeDraw:
+# unaffected goal area at the top
 add $a0, $zero, $zero 		# put start location of goal region into $a0
 addi $a1, $zero, 640 		# put end location of goal region into $a1
 lw $a2, goalColor  		# load color of goal region into $a2
 jal storeRec
-
-# STORE GOALROW
+# goalRow
 la $a0, goalRow
 lw $a1, goalRowStart
 lw $a2 goalColor
 lw $a3 goalBlockColor
 jal storeLogCar
-
-# STORE LOGROW1
+# logRow1
 la $a0 logRow1
 lw $a1 logRowStart1
 lw $a2 waterColor
 lw $a3 logColor
 jal storeLogCar
-
-# STORE LOGROW2
+# logRow2
 la $a0 logRow2
 lw $a1 logRowStart2
 lw $a2 waterColor
 lw $a3 logColor
 jal storeLogCar
-
-# STORE LOGROW3
+# logRow3
 la $a0 logRow3
 lw $a1 logRowStart3
 lw $a2 waterColor
 lw $a3 logColor
 jal storeLogCar
-
-# STORE SAFE REGION
+# safe area
 addi $a0, $zero, 2176 		# put start location of safe region into $a0
 addi $a1, $zero, 2560		# put end location of safe region into $a1
 lw $a2, safeColor  		# load color of safe region into $a2
 jal storeRec
-
-# STORE CARROW1
+# carRow1
 la $a0 carRow1
 lw $a1 carRowStart1
 lw $a2 roadColor
 lw $a3 carColor
 jal storeLogCar
-
-# STORE CARROW2
+# carRow2
 la $a0 carRow2
 lw $a1 carRowStart2
 lw $a2 roadColor
 lw $a3 carColor
 jal storeLogCar
-
-# STORE CARROW3
+# carRow3
 la $a0 carRow3
 lw $a1 carRowStart3
 lw $a2 roadColor
 lw $a3 carColor
 jal storeLogCar
-
-# STORE START REGION
+# start area
 addi $a0, $zero, 3712 		# put start location of start region into $a0
 addi $a1, $zero, 4096 		# put end location of start region into $a1
 lw $a2, startColor  		# load color of start region into $a2
 jal storeRec
-
-# STORE FROG
+# frog
 la $a0, frogPosition
 lw $a1, frogLightColor 		# load light color of frog into $a1
 lw $a2, frogDarkColor 		# load dark color of frog into $a2
 jal storeFrog
-
-# STORE FROG LIFE
+# frog life array
 la $a0, frogLifeArray
 lw $a1, frogLifeColor
 jal storeLife
-
-# DRAW SCREEN
+# draw screen
 jal drawScreen
-
+# sleep
 li $v0, 32
 li $a0, 17
 syscall
 
-j MainLoop
+j Main
 
 Exit:
 li $v0, 10 # terminate the program gracefully

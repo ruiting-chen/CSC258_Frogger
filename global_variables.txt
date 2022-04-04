@@ -1,0 +1,75 @@
+.data
+frogPosition: .space 8
+
+goalRow: .word 0:32
+logRow1: .space 128
+logRow2: .space 128
+logRow3: .space 128
+carRow1: .space 128
+carRow2: .space 128
+carRow3: .space 128
+
+goalStart: .word 0
+lifeRowStart: .word 128
+goalRowStart: .word 640
+safeStart: .word 2176
+startStart: .word 3712
+logRowStart1: .word 1024
+logRowStart2: .word 1408
+logRowStart3: .word 1792
+carRowStart1: .word 2560
+carRowStart2: .word 2944
+carRowStart3: .word 3328
+goalRowMiddle: .word 24
+logRow1Middle: .word 36
+logRow2Middle: .word 48
+logRow3Middle: .word 60
+carRow1Middle: .word 84
+carRow2Middle: .word 96
+carRow3Middle: .word 108
+
+waterColor: .word 0x002424a3
+roadColor: .word 0x00575757
+logColor: .word 0x00824d19
+carColor: .word 0x00ad1c0c
+startColor: .word 0x00408a29
+safeColor: .word 0x00baa625
+goalColor: .word 0x00408a29
+goalBlockColor: .word 0x002a591b
+
+frogLightColor: .word 0x00b800a8
+frogDarkColor: .word 0x00570251
+frogDieLightColor1: .word 0x00b0e805
+frogDieDarkColor1: .word 0x0081ab02
+frogDieLightColor2: .word 0x00d97109
+frogDieDarkColor2: .word 0x008f4a04
+frogLifeColor: .word 0x00d6384f
+
+displayAddress: .word 0x10008000
+screen: .space 4096
+
+currLevel: .word 1		# current level that the game is in 
+maxLevel: .word 2 		# maximum level of the game
+goalRemain: .word 3 		# goal position remaining = 3 at the begining
+frogReachedGoal: .word 0	# 0 = not reached, 1 = reached 
+frogDied: .word 1 			# 0 = not die, 1 = die
+frogLifeRemain: .word 3 	# number of life remaining, start with 3
+frogLifeArray: .word 1:3 	# life remaining array is an array with 3 elements, 0 = no life, 1 = life
+
+# carLogSpeed: .word 10 		# how many main loop cycles to update car/log position once
+# carLogCurrLap: .space 4		# which cycles is car/log currently on
+logRow1Speed: .word 10, 4	# speed of logRow1 in each level
+logRow2Speed: .word 10, 8	# speed of logRow2 in each level
+logRow3Speed: .word 10, 6	# speed of logRow3 in each level
+carRow1Speed: .word 10, 6	# speed of carRow1 in each level
+carRow2Speed: .word 10, 4	# speed of carRow2 in each level
+carRow3Speed: .word 10, 8	# speed of carRow3 in each level
+logRow1CurrentLap: .word 0	# which cycles is logRow1 currently on, if cycle(lap) == speed, update log position
+logRow2CurrentLap: .word 0	# which cycles is logRow2 currently on, if cycle(lap) == speed, update log position
+logRow3CurrentLap: .word 0	# which cycles is logRow3 currently on, if cycle(lap) == speed, update log position
+carRow1CurrentLap: .word 0	# which cycles is carRow1 currently on, if cycle(lap) == speed, update car position
+carRow2CurrentLap: .word 0	# which cycles is carRow2 currently on, if cycle(lap) == speed, update car position
+carRow3CurrentLap: .word 0	# which cycles is carRow3 currently on, if cycle(lap) == speed, update car position
+
+retryMessage: .asciiz "Do you want to Retry?"
+nextLevelMessage: .asciiz "Do you want to play the next level?"
