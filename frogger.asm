@@ -13,14 +13,16 @@
 # - Base Address for Display: 0x10008000 ($gp)
 #
 # Which milestone is reached in this submission?
-# - Milestone 3 
+# - Milestone 5 
 #
 # Which approved additional features have been implemented?
 # (See the assignment handout for the list of additional features)
 # 1. add a third row of water and road - Easy Feature
 # 2. add a death/respawn animation - Easy Feature
-# 3. (fill in the feature, if any)
-# ... (add more if necessary)
+# 3. display 'retry' option after player death - Easy Feature
+# 4. display number of lives remaining - Easy Feature
+# 5. have objects in different row move at different speed - Easy Feature
+# 6. make a second level - Hard Feature
 #
 # Any additional information that the TA needs to know:
 # - (write here, if any)
@@ -71,13 +73,14 @@ frogDieLightColor1: .word 0x00b0e805
 frogDieDarkColor1: .word 0x0081ab02
 frogDieLightColor2: .word 0x00d97109
 frogDieDarkColor2: .word 0x008f4a04
+frogWinDarkColor: .word 0x00ffc96b
 frogLifeColor: .word 0x00d6384f
 
 displayAddress: .word 0x10008000
 screen: .space 4096
 
 currLevel: .word 0		# (current level - 1) * 4 that the game is in 
-maxLevel: .word 4 		# (maximum level - 1) * 4 of the game
+maxLevel: .word 8 		# (maximum level - 1) * 4 of the game
 goalRemain: .word 3 		# goal position remaining = 3 at the begining
 frogReachedGoal: .word 0	# 0 = not reached, 1 = reached 
 frogDied: .word 0 		# 0 = not die, 1 = die
@@ -86,12 +89,12 @@ frogLifeArray: .word 1:3 	# life remaining array is an array with 3 elements, 0 
 
 # carLogSpeed: .word 10 		# how many main loop cycles to update car/log position once
 # carLogCurrLap: .space 4		# which cycles is car/log currently on
-logRow1Speed: .word 10, 4	# speed of logRow1 in each level
-logRow2Speed: .word 10, 8	# speed of logRow2 in each level
-logRow3Speed: .word 10, 6	# speed of logRow3 in each level
-carRow1Speed: .word 10, 6	# speed of carRow1 in each level
-carRow2Speed: .word 10, 4	# speed of carRow2 in each level
-carRow3Speed: .word 10, 8	# speed of carRow3 in each level
+logRow1Speed: .word 20, 4	# speed of logRow1 in each level
+logRow2Speed: .word 20, 12	# speed of logRow2 in each level
+logRow3Speed: .word 20, 4	# speed of logRow3 in each level
+carRow1Speed: .word 20, 12	# speed of carRow1 in each level
+carRow2Speed: .word 20, 4	# speed of carRow2 in each level
+carRow3Speed: .word 20, 12	# speed of carRow3 in each level
 logRow1CurrentLap: .word 0	# which cycles is logRow1 currently on, if cycle(lap) == speed, update log position
 logRow2CurrentLap: .word 0	# which cycles is logRow2 currently on, if cycle(lap) == speed, update log position
 logRow3CurrentLap: .word 0	# which cycles is logRow3 currently on, if cycle(lap) == speed, update log position
@@ -101,6 +104,7 @@ carRow3CurrentLap: .word 0	# which cycles is carRow3 currently on, if cycle(lap)
 
 retryMessage: .asciiz "Do you want to Retry?"
 nextLevelMessage: .asciiz "Do you want to play the next level?"
+gameFinishMessage: .asciiz "Congratulations! You have completed all levels of the game"
 
 .text
 j resetFrogLife
@@ -557,29 +561,40 @@ jr $ra
 
 #####################################################################################################################################################################
 Main:
-# CHECK CURRENT LEVEL == MAX LEVEL
-checkNoMoreLevel:
-lw $t0, currLevel ########################################################################################################################################
-lw $t1, maxLevel
-beq $t0, $t1, Exit				# if currLevel == maxLevel (game ended), jump to Exit
-
 # CHECK IF GOAL REMAIN == 0
 checkLevelPassed:
 lw $t1, goalRemain
 bne $t1, $zero, checkGoalReachedLastCycle	# if goalRemain != 0 (frog didn't pass level), jump to checkGoalReachedLastCycle
 
-# DISPLAY VICTORY DRAWING
-displayVictory:
-# victory screen: store frog (die color 2)
+# DISPLAY VICTORY DRAWING, UPDATE currLevel
+displayVictoryUpdateLevel:
+# victory screen: store frog (win color)
 la $a0, frogPosition
-lw $a1, frogDieLightColor2 		# load light color of frog into $a1
-lw $a2, frogDieDarkColor2 		# load dark color of frog into $a2
+lw $a1, goalColor 			# load light color of frog into $a1
+lw $a2, frogWinDarkColor 		# load dark color of frog into $a2
 jal storeFrog
 # draw screen
 jal drawScreen
 li $v0, 32
 li $a0, 1000
 syscall
+lw $t0, currLevel			
+addi $t0, $t0, 4
+sw $t0, currLevel			# update currLevel
+
+# CHECK CURRENT LEVEL == MAX LEVEL
+checkNoMoreLevel:
+lw $t0, currLevel
+lw $t1, maxLevel
+bne $t0, $t1, askContinue		# if currLevel != maxLevel (game not ended), jump to askContinue
+
+# SHOW GAME END MESSAGE
+showGameEnd:
+li $v0, 55
+la $a0, gameFinishMessage
+li $a1, 1
+syscall
+j Exit
 
 # ASK IF CONTINUE TO PLAY
 askContinue:
@@ -588,15 +603,12 @@ la $a0, nextLevelMessage
 syscall
 bne $a0, $zero, Exit			# if $a0 != 0 (user didn't choose yes), jump to Exit
 
-# RESET goalRemain, frogReachedGoal, frogDied, (frogLifeRemain, frogLifeArray,) UPDATE currLevel
+# RESET goalRemain, frogReachedGoal, frogDied, (frogLifeRemain, frogLifeArray,)
 resetForNextLevel:
 addi $t0, $zero, 3
 sw, $t0, goalRemain			# reset goalRemain to 3
 sw $zero, frogReachedGoal		# reset frogReachedGoal to 0 (not reached)
 sw $zero, frogDied			# reset frogDied to 0 (not die)
-lw $t0, currLevel			
-addi $t0, $t0, 4
-sw $t0, currLevel			# update currLevel
 j resetFrogLife				# jump to resetFrogLife
 
 # CHECK IF GOAL REACHED LAST ROUND
@@ -672,10 +684,12 @@ la $a0, frogLifeArray
 lw $a1, frogLifeRemain
 jal updateLife				# update frog life remaining array 
 
-# RESET goalRow
+# RESET goalRow, goalRemain
 resetGoalRegion:
 la $a0, goalRow
 jal setGoalRow
+addi $t0, $zero, 3
+sw $t0, goalRemain
 
 # RESET logRow, carRow, log/carRowLap, frogPosition
 resetFrogLogCar:
@@ -892,7 +906,8 @@ checkSpeedCarRow1:
 lw $t0, carRow1CurrentLap
 la $t1, carRow1Speed
 lw $t2, currLevel
-add $t1, $t1, $t2 			# get speed of carRow1 (stored in $t1) accrding to level
+add $t1, $t1, $t2 			
+lw $t1, 0($t1)				# $t1 = speed of carRow1 accrding to level
 beq $t0, $t1, updateCarRow1		# if $t0 == $t1, jump to updateCarRow1
 addi $t0, $t0, 1				
 sw $t0, carRow1CurrentLap		# else ($t0 != $t1), increment carRow1CurrentLap by 1
@@ -907,7 +922,8 @@ checkSpeedCarRow2:
 lw $t0, carRow2CurrentLap
 la $t1, carRow2Speed
 lw $t2, currLevel
-add $t1, $t1, $t2 			# get speed of carRow2 (stored in $t1) accrding to level
+add $t1, $t1, $t2 			
+lw $t1, 0($t1)				# $t1 = speed of carRow1 accrding to level
 beq $t0, $t1, updateCarRow2		# if $t0 == $t1, jump to updateCarRow2
 addi $t0, $t0, 1
 sw $t0, carRow2CurrentLap		# else ($t0 != $t1), increment carRow2CurrentLap by 1
@@ -922,7 +938,8 @@ checkSpeedCarRow3:
 lw $t0, carRow3CurrentLap
 la $t1, carRow3Speed
 lw $t2, currLevel
-add $t1, $t1, $t2 			# get speed of carRow3 (stored in $t1) accrding to level
+add $t1, $t1, $t2 			
+lw $t1, 0($t1)				# $t1 = speed of carRow1 accrding to level
 beq $t0, $t1, updateCarRow3		# if $t0 == $t1, jump to updateCarRow2
 addi $t0, $t0, 1
 sw $t0, carRow3CurrentLap		# else ($t0 != $t1), increment carRow3CurrentLap by 1
