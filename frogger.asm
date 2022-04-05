@@ -80,7 +80,7 @@ currLevel: .word 0		# (current level - 1) * 4 that the game is in
 maxLevel: .word 4 		# (maximum level - 1) * 4 of the game
 goalRemain: .word 3 		# goal position remaining = 3 at the begining
 frogReachedGoal: .word 0	# 0 = not reached, 1 = reached 
-frogDied: .word 1 		# 0 = not die, 1 = die
+frogDied: .word 0 		# 0 = not die, 1 = die
 frogLifeRemain: .word 3 	# number of life remaining, start with 3
 frogLifeArray: .word 1:3 	# life remaining array is an array with 3 elements, 0 = no life, 1 = life
 
@@ -898,7 +898,7 @@ addi $t0, $t0, 1
 sw $t0, carRow1CurrentLap		# else ($t0 != $t1), increment carRow1CurrentLap by 1
 j checkSpeedCarRow2			# jump to checkSpeedCarRow12
 updateCarRow1:				# update carRow1
-la $a0, logRow1
+la $a0, carRow1
 addi $a1, $zero, 0
 jal updateLogCar  
 sw $zero, carRow1CurrentLap		# reset carRow1CurrentLap to 0
@@ -913,7 +913,7 @@ addi $t0, $t0, 1
 sw $t0, carRow2CurrentLap		# else ($t0 != $t1), increment carRow2CurrentLap by 1
 j checkSpeedCarRow3			# jump to checkSpeedCarRow13
 updateCarRow2:				# update carRow2
-la $a0, logRow2
+la $a0, carRow2
 addi $a1, $zero, 1
 jal updateLogCar  
 sw $zero, carRow2CurrentLap		# reset carRow2CurrentLap to 0
@@ -928,7 +928,7 @@ addi $t0, $t0, 1
 sw $t0, carRow3CurrentLap		# else ($t0 != $t1), increment carRow3CurrentLap by 1
 j detectFrogDieReachGoal		# jump to detectFrogDieReachGoal
 updateCarRow3:				# update carRow3
-la $a0, logRow3
+la $a0, carRow3
 addi $a1, $zero, 0
 jal updateLogCar  
 sw $zero, carRow3CurrentLap		# reset carRow3CurrentLap to 0
