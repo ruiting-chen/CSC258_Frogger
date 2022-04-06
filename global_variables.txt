@@ -1,5 +1,6 @@
 .data
-frogPosition: .space 8
+frogPosition: .space 8 				# (x, y)
+frogOrientation: .word 0		# 0 = up, 1 = down, 2 = left, 3 = right
 
 goalRow: .word 0:32
 logRow1: .space 128
@@ -43,13 +44,14 @@ frogDieLightColor1: .word 0x00b0e805
 frogDieDarkColor1: .word 0x0081ab02
 frogDieLightColor2: .word 0x00d97109
 frogDieDarkColor2: .word 0x008f4a04
+frogWinLightColor: .word 0x00ffc96b
 frogLifeColor: .word 0x00d6384f
 
 displayAddress: .word 0x10008000
 screen: .space 4096
 
-currLevel: .word 1		# current level that the game is in 
-maxLevel: .word 2 		# maximum level of the game
+currLevel: .word 0		# (current level - 1) * 4 that the game is in 
+maxLevel: .word 4 		# (maximum level - 1) * 4 of the game
 goalRemain: .word 3 		# goal position remaining = 3 at the begining
 frogReachedGoal: .word 0	# 0 = not reached, 1 = reached 
 frogDied: .word 1 			# 0 = not die, 1 = die
@@ -73,3 +75,4 @@ carRow3CurrentLap: .word 0	# which cycles is carRow3 currently on, if cycle(lap)
 
 retryMessage: .asciiz "Do you want to Retry?"
 nextLevelMessage: .asciiz "Do you want to play the next level?"
+gameFinishMessage: .asciiz "Congratulations! You have completed all levels of the game"

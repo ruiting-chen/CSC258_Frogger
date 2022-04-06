@@ -22,7 +22,8 @@
 # 3. display 'retry' option after player death - Easy Feature
 # 4. display number of lives remaining - Easy Feature
 # 5. have objects in different row move at different speed - Easy Feature
-# 6. make a second level - Hard Feature
+# 6. make frog point in the direction that it's travelling - Easy Feature
+# 7. make a second level - Hard Feature
 #
 # Any additional information that the TA needs to know:
 # - (write here, if any)
@@ -30,6 +31,7 @@
 #####################################################################
 .data
 frogPosition: .space 8			# (x, y)
+frogOrientation: .word 0		# 0 = up, 1 = down, 2 = left, 3 = right
 
 goalRow: .word 0:32
 logRow1: .space 128
@@ -87,8 +89,6 @@ frogDied: .word 0 		# 0 = not die, 1 = die
 frogLifeRemain: .word 3 	# number of life remaining, start with 3
 frogLifeArray: .word 1:3 	# life remaining array is an array with 3 elements, 0 = no life, 1 = life
 
-# carLogSpeed: .word 10 		# how many main loop cycles to update car/log position once
-# carLogCurrLap: .space 4		# which cycles is car/log currently on
 logRow1Speed: .word 20, 4	# speed of logRow1 in each level
 logRow2Speed: .word 20, 12	# speed of logRow2 in each level
 logRow3Speed: .word 20, 4	# speed of logRow3 in each level
@@ -329,30 +329,109 @@ add $t7, $zero, $zero		# $t7 is (height) loop counter
 add $t1, $t8, $zero		# $t1 is the result location
 # calculate actual frog location
 storeFrogCalculate:
-beq $t7, $t9, storeFrogStart
+beq $t7, $t9, storeFrogOrientationCheck
 addi $t1, $t1, 128
 addi $t7, $t7, 4
 j storeFrogCalculate
-# store middle row of frog
-storeFrogStart:
+# determine orientation of frog
+storeFrogOrientationCheck:
+lw $t6 frogOrientation		# $t6 = orientation of frog (0 = up, 1 = down, 2 = left, 3 = right)
+addi $t3, $zero, 1
+addi $t4, $zero, 2
+addi $t5, $zero, 3
+beq $t6, $zero, storeFrogUp	# if $t6 == $zero (frog poiunts up), jump to storeFrogUp
+beq $t6, $t3, storeFrogDown	# if $t6 == $t3 (frog poiunts dwon), jump to storeFrogDown
+beq $t6, $t4, storeFrogLeft	# if $t6 == $t4 (frog poiunts left), jump to storeFrogLeft
+beq $t6, $t5, storeFrogRight	# if $t6 == $t5 (frog poiunts right), jump to storeFrogRight
+# store frog pointing upward
+storeFrogUp:
+# middle row
 add $t0, $t0, $t1
 sw $a1, 0($t0) 
 addi $t0, $t0, 4 
 sw $a1, 0($t0)
 addi $t0, $t0, -8
 sw $a1, 0($t0)
-# store upper row of frog
+# upper row
 addi $t0, $t0, -128
 sw $a2, 0($t0) 
 addi $t0, $t0, 8
 sw $a2, 0($t0) 
-# store bottom row of frog
+# bottom row
 addi $t0, $t0, 256
 sw $a1, 0($t0) 
 addi $t0, $t0, -4
 sw $a2, 0($t0) 
 addi $t0, $t0, -4
 sw $a1, 0($t0) 
+j storeFrogReturn
+# store frog pointing downward
+storeFrogDown:
+# middle row
+add $t0, $t0, $t1
+sw $a1, 0($t0) 
+addi $t0, $t0, 4 
+sw $a1, 0($t0)
+addi $t0, $t0, -8
+sw $a1, 0($t0)
+# upper row
+addi $t0, $t0, -128
+sw $a1, 0($t0) 
+addi $t0, $t0, 4
+sw $a2, 0($t0) 
+addi $t0, $t0, 4
+sw $a1, 0($t0) 
+# bottom row
+addi $t0, $t0, 256
+sw $a2, 0($t0) 
+addi $t0, $t0, -8
+sw $a2, 0($t0) 
+j storeFrogReturn
+# store frog pointing left
+storeFrogLeft:
+# middle row
+add $t0, $t0, $t1
+sw $a1, 0($t0) 
+addi $t0, $t0, 4 
+sw $a2, 0($t0)
+# upper row
+addi $t0, $t0, -128
+sw $a1, 0($t0) 
+addi $t0, $t0, -4
+sw $a1, 0($t0) 
+addi $t0, $t0, -4
+sw $a2, 0($t0) 
+# bottom row
+addi $t0, $t0, 256
+sw $a2, 0($t0) 
+addi $t0, $t0, 4
+sw $a1, 0($t0) 
+addi $t0, $t0, 4
+sw $a1, 0($t0) 
+j storeFrogReturn
+# store frog pointing right
+storeFrogRight:
+# middle row
+add $t0, $t0, $t1
+sw $a1, 0($t0) 
+addi $t0, $t0, -4 
+sw $a2, 0($t0)
+# upper row
+addi $t0, $t0, -128
+sw $a1, 0($t0) 
+addi $t0, $t0, 4
+sw $a1, 0($t0) 
+addi $t0, $t0, 4
+sw $a2, 0($t0) 
+# bottom row
+addi $t0, $t0, 256
+sw $a2, 0($t0) 
+addi $t0, $t0, -4
+sw $a1, 0($t0) 
+addi $t0, $t0, -4
+sw $a1, 0($t0) 
+j storeFrogReturn
+storeFrogReturn:
 jr $ra
 
 
@@ -603,7 +682,7 @@ la $a0, nextLevelMessage
 syscall
 bne $a0, $zero, Exit			# if $a0 != 0 (user didn't choose yes), jump to Exit
 
-# RESET goalRemain, frogReachedGoal, frogDied, (frogLifeRemain, frogLifeArray,)
+# RESET goalRemain, frogReachedGoal, frogDied,
 resetForNextLevel:
 addi $t0, $zero, 3
 sw, $t0, goalRemain			# reset goalRemain to 3
@@ -614,12 +693,12 @@ j resetFrogLife				# jump to resetFrogLife
 # CHECK IF GOAL REACHED LAST ROUND
 checkGoalReachedLastCycle:
 lw $t0, frogReachedGoal
-beq $t0, $zero, checkFrogDiedLastCycle		# if $t0 == 0 (frog did not reached goal), jump to checkFrogDiedLastCycle
+beq $t0, $zero, checkFrogDiedLastCycle	# if $t0 == 0 (frog did not reached goal), jump to checkFrogDiedLastCycle
 
 # RESET frogReachedGoal
 resetForGoalReach:
-sw $zero, frogReachedGoal			# if goal is reached, reset frogReachedGoal to 0
-j resetFrogLogCar				# jump to resetFrogLogCar
+sw $zero, frogReachedGoal		# if goal is reached, reset frogReachedGoal to 0
+j resetFrogLogCar			# jump to resetFrogLogCar
 
 # CHECK IF FROG DIED
 checkFrogDiedLastCycle:
@@ -691,7 +770,7 @@ jal setGoalRow
 addi $t0, $zero, 3
 sw $t0, goalRemain
 
-# RESET logRow, carRow, log/carRowLap, frogPosition
+# RESET logRow, carRow, log/carRowLap, frogPosition, frogOrientation
 resetFrogLogCar:
 # logRow1
 la $a0, logRow1
@@ -759,6 +838,8 @@ addi $a0, $zero, 68
 addi $a1, $zero, 120
 la $a2, frogPosition
 jal setFrog
+# frogOrientation
+sw $zero, frogOrientation
 j storeDraw
 
 #####################################################################################################################################################################
@@ -776,13 +857,14 @@ beq $t2, 0x61, respondLeft	# 'a' pressed
 beq $t2, 0x64, respondRight	# 'd' pressed
 j moveLogCar			# if key pressed was not w/a/s/d, jump to moveLogCar
 
-# UPDATE frogPosition
+# UPDATE frogPosition, frogOrientation
 # frog up
 respondUp:
 la $a0, frogPosition
 addi $a1, $zero, 0
 addi $a2, $zero, -12 
 jal updateFrog
+sw $zero, frogOrientation	# update frogOrientation
 j moveLogCar
 # frog down
 respondDown:
@@ -790,6 +872,8 @@ la $a0, frogPosition
 addi $a1, $zero, 0
 addi $a2, $zero, 12 
 jal updateFrog
+addi $t0, $zero, 1
+sw $t0, frogOrientation		# update frogOrientation
 j moveLogCar
 # frog left
 respondLeft:
@@ -797,6 +881,8 @@ la $a0, frogPosition
 addi $a1, $zero, 1
 addi $a2, $zero, -12 
 jal updateFrog
+addi $t0, $zero, 2
+sw $t0, frogOrientation		# update frogOrientation
 j moveLogCar
 # frog right
 respondRight:
@@ -804,6 +890,8 @@ la $a0, frogPosition
 addi $a1, $zero, 1
 addi $a2, $zero, 12 
 jal updateFrog
+addi $t0, $zero, 3
+sw $t0, frogOrientation		# update frogOrientation
 j moveLogCar
 
 # UPDATE LOG CAR ROW IF NEEDED
